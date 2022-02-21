@@ -1,0 +1,6 @@
+{
+	"discord_bot_token": "",
+	"twitch_client_id": "",
+	"twitch_client_secret": "",
+	"subscriptions_file": "subs.json"
+}
