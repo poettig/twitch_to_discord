@@ -35,9 +35,11 @@ class Subscriber:
 		return Subscriber(subscriber_info.get("discord_id"), set(subscriber_info.get("subscribed_streamers")))
 
 	def to_dict(self):
-		result = self.__dict__
-		result["subscribed_streamers"] = list(result["subscribed_streamers"])
-		return result
+		# Create from sratch to prevent mutability problems
+		return {
+			"discord_id": self.discord_id,
+			"subscribed_streamers": list(self.subscribed_streamers)
+		}
 
 	def add_subscription(self, streamer_id: int):
 		self.subscribed_streamers.add(streamer_id)
@@ -259,9 +261,9 @@ class DiscordClient:
 				await message.channel.recipient.send(e.user_message)
 				logging.info(e.log_message)
 
-			except Exception as e:
-				await message.channel.recipient.send("Sorry, an error has occured. Please contact my programmer.")
-				logging.error(e)
+			# except Exception as e:
+			# 	await message.channel.recipient.send("Sorry, an error has occured. Please contact my programmer.")
+			# 	logging.error(e)
 
 		self.client.run(discord_bot_token)
 
