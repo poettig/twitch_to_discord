@@ -1,11 +1,8 @@
-import argparse
 import asyncio
 import json
 import logging
 import os.path
 import re
-import threading
-import time
 
 import discord
 import typing
@@ -158,22 +155,27 @@ class DiscordClient:
 				for streamer_id in subscribed_streamer_ids:
 					new_titles[streamer_id] = self.twitch_client.get_stream_title_by_streamer_id(streamer_id)
 
-				# Don't do anything if there are no memorized titles
-				if len(titles) != 0:
-					# Check titles for differences and notify subscribers
-					for streamer_id, new_title in new_titles.items():
-						if new_title != titles.get(streamer_id):
-							# Notify all subscribers of that streamer
-							for subscriber in self.subscription_manager.subscribers.values():
-								if streamer_id in subscriber.subscribed_streamers:
-									user = await self.client.fetch_user(subscriber.discord_id)
+				# Check titles for differences and notify subscribers
+				for streamer_id, new_title in new_titles.items():
+					# Ignore if there was no previously remembered title
+					if titles.get(streamer_id) is None:
+						continue
 
-									embed = discord.Embed(
-										title=f"Title update for *{self.twitch_client.streamer_display_name_from_id(streamer_id)}*",
-										description=new_title,
-										color=discord.Color.orange()
-									)
-									await user.send(embed=embed)
+					# Ignore if the title did not change
+					if new_title == titles.get(streamer_id):
+						continue
+
+					# Notify all subscribers of that streamer
+					for subscriber in self.subscription_manager.subscribers.values():
+						if streamer_id in subscriber.subscribed_streamers:
+							user = await self.client.fetch_user(subscriber.discord_id)
+
+							embed = discord.Embed(
+								title=f"Title update for *{self.twitch_client.streamer_display_name_from_id(streamer_id)}*",
+								description=new_title,
+								color=discord.Color.orange()
+							)
+							await user.send(embed=embed)
 
 				titles = new_titles
 				await asyncio.sleep(config["scan_interval"])
