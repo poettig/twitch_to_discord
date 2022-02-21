@@ -122,18 +122,33 @@ class TwitchClient:
 	def __init__(self, client_id: str, client_secret: str):
 		self.client = Twitch(client_id, client_secret)
 
-	def streamer_info_from_name(self, name: str):
+	def get_streamer_info_from_name(self, name: str):
 		return self.client.get_users(logins=[name.lower()]).get("data", [])[0]
 
-	def streamer_info_from_id(self, streamer_id: int):
+	def get_streamer_info_from_id(self, streamer_id: int):
 		return self.client.get_users([str(streamer_id)]).get("data", [])[0]
 
-	def streamer_display_name_from_id(self, streamer_id: int):
-		return self.streamer_info_from_id(streamer_id).get("display_name", "<failed to get display name>")
+	def get_display_name(self, streamer_id: int):
+		return self.get_streamer_info_from_id(streamer_id).get("display_name", "<failed to get display name>")
 
-	def get_stream_title_by_streamer_id(self, streamer_id: int):
+	def get_stream_title(self, streamer_id: int):
 		result = self.client.get_channel_information(str(streamer_id)).get("data", [])[0]
 		return result["title"]
+
+	def get_stream_status_by_streamer_id(self, streamer_id: int):
+		return self.get_stream_info(streamer_id)["is_live"]
+
+	def is_live(self, streamer_id: int):
+		result = self.get_stream_info(streamer_id)
+		return result is not None
+
+	def get_stream_info(self, streamer_id: int):
+		result = self.client.get_streams(user_id=[str(streamer_id)]).get("data", [])
+		if len(result) == 0:
+			return None
+
+		return result[0]
+
 
 
 class DiscordClient:
@@ -161,7 +176,7 @@ class DiscordClient:
 				# Get all titles
 				new_titles = dict()
 				for streamer_id in subscribed_streamer_ids:
-					new_titles[streamer_id] = self.twitch_client.get_stream_title_by_streamer_id(streamer_id)
+					new_titles[streamer_id] = self.twitch_client.get_stream_title(streamer_id)
 
 				# Check titles for differences and notify subscribers
 				for streamer_id, new_title in new_titles.items():
@@ -173,13 +188,18 @@ class DiscordClient:
 					if new_title == titles.get(streamer_id):
 						continue
 
+					# TODO: Make configurable
+					# Ignore if the streamer is live
+					if self.twitch_client.is_live(streamer_id):
+						continue
+
 					# Notify all subscribers of that streamer
 					for subscriber in self.subscription_manager.subscribers.values():
 						if streamer_id in subscriber.subscribed_streamers:
 							user = await self.client.fetch_user(subscriber.discord_id)
 
 							embed = discord.Embed(
-								title=f"Title update for *{self.twitch_client.streamer_display_name_from_id(streamer_id)}*",
+								title=f"Title update for *{self.twitch_client.get_display_name(streamer_id)}*",
 								description=escape_markdown(new_title),
 								color=discord.Color.orange()
 							)
@@ -219,7 +239,7 @@ class DiscordClient:
 
 			def sub_unsub_wrapper(func, name: str, subscriber: discord.User):
 				try:
-					_streamer_info = self.twitch_client.streamer_info_from_name(name)
+					_streamer_info = self.twitch_client.get_streamer_info_from_name(name)
 				except IndexError:
 					# No broadcaster returned.
 					raise InputError(
@@ -262,7 +282,7 @@ class DiscordClient:
 					if not data:
 						response = "You do not have any subscriptions."
 					else:
-						names = [self.twitch_client.streamer_display_name_from_id(streamer_id) for streamer_id in data]
+						names = [self.twitch_client.get_display_name(streamer_id) for streamer_id in data]
 						response = f"You are subscribed to {' and '.join(', '.join(names).rsplit(', ', 1))}."
 
 				await message.channel.recipient.send(response)
@@ -271,9 +291,9 @@ class DiscordClient:
 				await message.channel.recipient.send(e.user_message)
 				logging.info(e.log_message)
 
-			# except Exception as e:
-			# 	await message.channel.recipient.send("Sorry, an error has occured. Please contact my programmer.")
-			# 	logging.error(e)
+			except Exception as e:
+				await message.channel.recipient.send("Sorry, an error has occured. Please contact my programmer.")
+				logging.error(e)
 
 		self.client.run(discord_bot_token)
 
