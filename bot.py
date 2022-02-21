@@ -100,6 +100,10 @@ class SubscriptionManager:
 			return False
 
 		self.subscribers[subscriber.id].remove_subscription(streamer_id)
+
+		# Dump file
+		self.dump_to_file(config["subscriptions_file"])
+
 		return True
 
 	def get_subscriptions(self, subscriber: discord.User):
