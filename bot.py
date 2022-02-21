@@ -10,6 +10,10 @@ import typing
 from twitchAPI.twitch import Twitch
 
 
+def escape_markdown(text: str):
+	return re.sub(r"([_~*>`|])", r"\\\1", text)
+
+
 class InputError(Exception):
 	def __init__(self, log_message, user_message="Sorry, an error has occured. Please contact my programmer."):
 		self.user_message = user_message
@@ -176,7 +180,7 @@ class DiscordClient:
 
 							embed = discord.Embed(
 								title=f"Title update for *{self.twitch_client.streamer_display_name_from_id(streamer_id)}*",
-								description=new_title,
+								description=escape_markdown(new_title),
 								color=discord.Color.orange()
 							)
 							await user.send(embed=embed)
