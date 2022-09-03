@@ -6,9 +6,11 @@ import os.path
 import re
 import typing
 
+import inflect
 import discord
 from twitchAPI.twitch import Twitch
 
+inflector = inflect.engine()
 
 def escape_markdown(text: str):
 	return re.sub(r"([_~*>`|])", r"\\\1", text)
@@ -42,6 +44,9 @@ class Subscriber:
 			"subscribed_streamers": list(self.subscribed_streamers)
 		}
 
+	def get_subscribed_streamer_count(self):
+		return len(self.subscribed_streamers)
+
 	def add_subscription(self, streamer_id: int):
 		self.subscribed_streamers.add(streamer_id)
 
@@ -73,6 +78,8 @@ class SubscriptionManager:
 		for subscriber in data:
 			subscribers[subscriber["discord_id"]] = Subscriber.from_dict(subscriber)
 
+		logging.info(f"Loaded subscriptions for {len(subscribers)} {inflector.plural('subscriber', len(subscribers))}.")
+
 		return SubscriptionManager(subscriptions_file_path, subscribers)
 
 	def dump_to_file(self, filename: str):
@@ -82,6 +89,8 @@ class SubscriptionManager:
 
 		with open(filename, "w") as fh:
 			json.dump(subscribers, fh)
+
+		logging.info(f"Wrote subscriptions for {len(subscribers)} {inflector.plural('subscriber', len(subscribers))}.")
 
 	def add_subscription(self, streamer_id: int, subscriber: discord.User):
 		existing_subscriber = self.subscribers.get(subscriber.id)
@@ -112,12 +121,15 @@ class SubscriptionManager:
 
 		return True
 
-	def get_subscriptions(self, subscriber: discord.User):
+	def get_subscriptions_by_discord_user(self, subscriber: discord.User):
 		data = self.subscribers.get(subscriber.id)
 		if data is None:
 			return False
 
 		return data.subscribed_streamers
+
+	def get_subscriber_count(self):
+		return len(self.subscribers)
 
 
 class TwitchClient:
@@ -170,7 +182,7 @@ class DiscordClient:
 	COMMAND_REGEX = re.compile("^!([a-z]+)(?: ([^ ]+))?.*$")
 
 	def __init__(self, discord_bot_token: str, twitch_client: TwitchClient, config: DiscordClientConfig):
-		intents = discord.Intents.none()
+		intents = discord.Intents.default()
 		intents.guilds = True
 		intents.messages = True
 		intents.message_content = True
@@ -224,6 +236,13 @@ class DiscordClient:
 								color=discord.Color.orange()
 							)
 							await user.send(embed=embed)
+							logging.debug(f"Sent title update of {self.twitch_client.get_display_name(streamer_id)} to {user.name}")
+
+					logging.info(
+						f"Sent title update of {self.twitch_client.get_display_name(streamer_id)}"
+						f" to {self.subscription_manager.get_subscriber_count()}"
+						f" {inflector.plural('subscriber', self.subscription_manager.get_subscriber_count())}"
+					)
 
 				titles = new_titles
 				await asyncio.sleep(self.config.scan_interval)
@@ -244,6 +263,7 @@ class DiscordClient:
 				return
 
 			match = DiscordClient.COMMAND_REGEX.match(message.content)
+			recipient = message.author
 			if not match:
 				embed = discord.Embed(
 					title="Help",
@@ -268,7 +288,8 @@ class DiscordClient:
 					value="Show all your active subscriptions.",
 					inline=False
 				)
-				await message.channel.recipient.send(embed=embed)
+				await recipient.send(embed=embed)
+				logging.info(f"Sent help to {recipient.name}.")
 				return
 
 			def sub_unsub_wrapper(func, name: str, subscriber: discord.User):
@@ -292,11 +313,12 @@ class DiscordClient:
 					success, streamer_info = sub_unsub_wrapper(
 						self.subscription_manager.add_subscription,
 						match.group(2),
-						message.channel.recipient
+						recipient
 					)
 
 					if success:
 						response = f"Successfully subscribed to updates for {streamer_info['display_name']}."
+						logging.info(f"Added subscription for {streamer_info['display_name']} to {recipient.name}.")
 					else:
 						response = f"You are already subscribed to {streamer_info['display_name']}."
 
@@ -304,31 +326,34 @@ class DiscordClient:
 					success, streamer_info = sub_unsub_wrapper(
 						self.subscription_manager.remove_subscription,
 						match.group(2),
-						message.channel.recipient
+						recipient
 					)
 
 					if success:
 						response = f"Successfully removed subscription for {streamer_info['display_name']}."
+						logging.info(f"Removed subscription for {streamer_info['display_name']} from {recipient.name}.")
 					else:
 						response = f"You are not subscribed to {streamer_info['display_name']}."
 
 				elif command == "subscriptions":
-					data = self.subscription_manager.get_subscriptions(message.channel.recipient)
+					data = self.subscription_manager.get_subscriptions_by_discord_user(recipient)
 					if not data:
 						response = "You do not have any subscriptions."
 					else:
 						names = [self.twitch_client.get_display_name(streamer_id) for streamer_id in data]
 						response = f"You are subscribed to {' and '.join(', '.join(names).rsplit(', ', 1))}."
 
-				await message.channel.recipient.send(response)
+				await recipient.send(response)
+				logging.info(f"Sent {command} result to {recipient.name}.")
 
 			except InputError as e:
-				await message.channel.recipient.send(e.user_message)
-				logging.info(e.log_message)
+				await recipient.send(e.user_message)
+				logging.warning(e.log_message)
 
 			except Exception as e:
-				await message.channel.recipient.send("Sorry, an error has occured. Please contact my programmer.")
+				await recipient.send("Sorry, an error has occured. Please contact my programmer.")
 				logging.error(e)
+				raise e
 
 		self.client.run(discord_bot_token, log_handler=None)
 
