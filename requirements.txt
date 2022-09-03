@@ -1,0 +1,2 @@
+discord~=2.0.0
+twitchAPI~=2.5.7.1

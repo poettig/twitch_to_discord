@@ -150,12 +150,15 @@ class TwitchClient:
 		return result[0]
 
 
-
 class DiscordClient:
 	COMMAND_REGEX = re.compile("^!([a-z]+)(?: ([^ ]+))?.*$")
 
 	def __init__(self, discord_bot_token: str, twitch_client: TwitchClient):
-		self.client = discord.Client()
+		intents = discord.Intents.none()
+		intents.guilds = True
+		intents.messages = True
+		intents.message_content = True
+		self.client = discord.Client(intents=intents)
 		self.twitch_client = twitch_client
 
 		if os.path.isfile(config["subscriptions_file"]):
