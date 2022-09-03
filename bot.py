@@ -1,12 +1,12 @@
+import argparse
 import asyncio
 import json
 import logging
 import os.path
 import re
-
-import discord
 import typing
 
+import discord
 from twitchAPI.twitch import Twitch
 
 
@@ -56,22 +56,24 @@ class Subscriber:
 class SubscriptionManager:
 	subcribers: typing.Dict[int, Subscriber]
 
-	def __init__(self, subscribers: typing.Dict[int, Subscriber] = None):
+	def __init__(self, subscriptions_file_path: str, subscribers: typing.Dict[int, Subscriber] = None):
+		self.subscriptions_file_path = subscriptions_file_path
+
 		if subscribers is None:
 			self.subscribers = dict()
 		else:
 			self.subscribers = subscribers
 
 	@staticmethod
-	def load_from_file(filename: str):
-		with open(filename, "r") as fh:
+	def load_from_file(subscriptions_file_path: str):
+		with open(subscriptions_file_path, "r") as fh:
 			data = json.load(fh)
 
 		subscribers = dict()
 		for subscriber in data:
 			subscribers[subscriber["discord_id"]] = Subscriber.from_dict(subscriber)
 
-		return SubscriptionManager(subscribers)
+		return SubscriptionManager(subscriptions_file_path, subscribers)
 
 	def dump_to_file(self, filename: str):
 		subscribers = []
@@ -92,7 +94,7 @@ class SubscriptionManager:
 			existing_subscriber.add_subscription(streamer_id)
 
 		# Dump file
-		self.dump_to_file(config["subscriptions_file"])
+		self.dump_to_file(self.subscriptions_file_path)
 
 		return True
 
@@ -106,7 +108,7 @@ class SubscriptionManager:
 		self.subscribers[subscriber.id].remove_subscription(streamer_id)
 
 		# Dump file
-		self.dump_to_file(config["subscriptions_file"])
+		self.dump_to_file(self.subscriptions_file_path)
 
 		return True
 
@@ -150,21 +152,36 @@ class TwitchClient:
 		return result[0]
 
 
+class DiscordClientConfig:
+	def __init__(self, scan_interval: int, subscriptions_file_path: str):
+		if scan_interval is None:
+			raise ValueError("The scan interval cannot be undefined.")
+		elif not isinstance(scan_interval, int) or scan_interval <= 0:
+			raise ValueError("The scan interval must be a positive integer.")
+
+		if not subscriptions_file_path:
+			raise ValueError("The subscriptions file path cannot be undefined or an empty string.")
+
+		self.scan_interval = scan_interval
+		self.subscriptions_file_path = subscriptions_file_path
+
+
 class DiscordClient:
 	COMMAND_REGEX = re.compile("^!([a-z]+)(?: ([^ ]+))?.*$")
 
-	def __init__(self, discord_bot_token: str, twitch_client: TwitchClient):
+	def __init__(self, discord_bot_token: str, twitch_client: TwitchClient, config: DiscordClientConfig):
 		intents = discord.Intents.none()
 		intents.guilds = True
 		intents.messages = True
 		intents.message_content = True
 		self.client = discord.Client(intents=intents)
 		self.twitch_client = twitch_client
+		self.config = config
 
-		if os.path.isfile(config["subscriptions_file"]):
-			self.subscription_manager = SubscriptionManager.load_from_file(config["subscriptions_file"])
+		if os.path.isfile(self.config.subscriptions_file_path):
+			self.subscription_manager = SubscriptionManager.load_from_file(self.config.subscriptions_file_path)
 		else:
-			self.subscription_manager = SubscriptionManager()
+			self.subscription_manager = SubscriptionManager(self.config.subscriptions_file_path)
 
 		async def twitch_watcher():
 			titles = dict()
@@ -209,7 +226,7 @@ class DiscordClient:
 							await user.send(embed=embed)
 
 				titles = new_titles
-				await asyncio.sleep(config["scan_interval"])
+				await asyncio.sleep(self.config.scan_interval)
 
 		@self.client.event
 		async def on_ready():
@@ -233,10 +250,24 @@ class DiscordClient:
 					description="You provided an invalid command. Get some help.",
 					color=discord.Color.red()
 				)
-				embed.set_thumbnail(url="https://pm1.narvii.com/6870/7cff25068982d923c2b17cc2159373ac29e5d275r1-723-691v2_uhq.jpg")
-				embed.add_field(name="`!subscribe <twitch_channel_name>`", value="Subscribe to notifications for a new streamer.", inline=False)
-				embed.add_field(name="`!unsubscribe <twitch_channel_name>`", value="Unsubscribe from notifications for a streamer.", inline=False)
-				embed.add_field(name="`!subscriptions`", value="Show all your active subscriptions.", inline=False)
+				embed.set_thumbnail(
+					url="https://pm1.narvii.com/6870/7cff25068982d923c2b17cc2159373ac29e5d275r1-723-691v2_uhq.jpg"
+				)
+				embed.add_field(
+					name="`!subscribe <twitch_channel_name>`",
+					value="Subscribe to notifications for a new streamer.",
+					inline=False
+				)
+				embed.add_field(
+					name="`!unsubscribe <twitch_channel_name>`",
+					value="Unsubscribe from notifications for a streamer.",
+					inline=False
+				)
+				embed.add_field(
+					name="`!subscriptions`",
+					value="Show all your active subscriptions.",
+					inline=False
+				)
 				await message.channel.recipient.send(embed=embed)
 				return
 
@@ -246,7 +277,8 @@ class DiscordClient:
 				except IndexError:
 					# No broadcaster returned.
 					raise InputError(
-						f"User '{DiscordClient.discord_user_to_full_name(subscriber)}' tried to subscribe to nonexisting streamer.",
+						f"User '{DiscordClient.discord_user_to_full_name(subscriber)}'"
+						f"tried to subscribe to nonexisting streamer."
 						f"Sorry, this streamer does not exist."
 					)
 
@@ -298,25 +330,49 @@ class DiscordClient:
 				await message.channel.recipient.send("Sorry, an error has occured. Please contact my programmer.")
 				logging.error(e)
 
-		self.client.run(discord_bot_token)
+		self.client.run(discord_bot_token, log_handler=None)
 
 	@staticmethod
 	def discord_user_to_full_name(user: discord.User):
 		return f"{user.display_name}#{user.discriminator}"
 
 
-config: dict
+def setup_logging(verbose: bool, debug: bool):
+	if debug:
+		log_level = logging.DEBUG
+	elif verbose:
+		log_level = logging.INFO
+	else:
+		log_level = logging.WARNING
+
+	log_format = "[%(asctime)s] %(levelname)8s: %(message)s"
+	log_date_format = "%Y-%m-%d %H:%M:%S"
+
+	logging.basicConfig(level=log_level, format=log_format, datefmt=log_date_format)
 
 
 def main():
-	with open("config.json", "r") as fh:
-		global config
+	parser = argparse.ArgumentParser(
+		description="Allows to subscribe for discord notification messages on multiple twitch stream state changes."
+	)
+	parser.add_argument("--verbose", "-v", action="store_true", help="Enable informational output.")
+	parser.add_argument("--debug", "-d", action="store_true", help="Enable debug output.")
+	parser.add_argument(
+		"--config-path", "-c", default="config.json",
+		help="The path to the configuration file, default is 'config.json' in the current working directory."
+	)
+	args = parser.parse_args()
+
+	setup_logging(args.verbose, args.debug)
+
+	with open(args.config_path, "r") as fh:
 		config = json.load(fh)
 
 	twitch_client = TwitchClient(config.get("twitch_client_id"), config.get("twitch_client_secret"))
-	DiscordClient(config.get("discord_bot_token"), twitch_client)
+
+	discord_config = DiscordClientConfig(config.get("scan_interval"), config.get("subscriptions_file"))
+	DiscordClient(config.get("discord_bot_token"), twitch_client, discord_config)
 
 
 if __name__ == "__main__":
-	logging.basicConfig(level=logging.INFO)
 	main()
