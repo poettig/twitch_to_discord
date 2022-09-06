@@ -74,37 +74,13 @@ class DiscordClient:
 		match = DiscordClient.COMMAND_REGEX.match(message.content)
 		recipient = message.author
 		if not match:
-			embed = discord.Embed(
-				title="Help",
-				description="You provided an invalid command. Get some help.",
-				color=discord.Color.red()
-			)
-			embed.set_thumbnail(
-				url="https://pm1.narvii.com/6870/7cff25068982d923c2b17cc2159373ac29e5d275r1-723-691v2_uhq.jpg"
-			)
-			embed.add_field(
-				name="`!subscribe <twitch_channel_name>`",
-				value="Subscribe to notifications for a new streamer.",
-				inline=False
-			)
-			embed.add_field(
-				name="`!unsubscribe <twitch_channel_name>`",
-				value="Unsubscribe from notifications for a streamer.",
-				inline=False
-			)
-			embed.add_field(
-				name="`!subscriptions`",
-				value="Show all your active subscriptions.",
-				inline=False
-			)
-			await recipient.send(embed=embed)
-			logging.info(f"Sent help to {recipient.name}.")
-			return
+			return await self.send_help(recipient)
 
 		# Dispatch commands
 		try:
 			response = "No message was prepared. Please inform my programmer."
 			command = match.group(1)
+
 			if command == "subscribe":
 				response = await self.subscribe_command(match, recipient)
 
@@ -113,6 +89,10 @@ class DiscordClient:
 
 			elif command == "subscriptions":
 				response = await self.list_subscriptions_command(recipient)
+
+			else:
+				await self.send_help(recipient)
+				return
 
 			await recipient.send(response)
 			logging.info(f"Sent {command} result to {recipient.name}.")
@@ -125,6 +105,35 @@ class DiscordClient:
 			await recipient.send("Sorry, an error has occured. Please contact my programmer.")
 			logging.error(e)
 			raise e
+
+	@staticmethod
+	async def send_help(recipient):
+		embed = discord.Embed(
+			title="Help",
+			description="You provided an invalid command. Get some help.",
+			color=discord.Color.red()
+		)
+		embed.set_thumbnail(
+			url="https://pm1.narvii.com/6870/7cff25068982d923c2b17cc2159373ac29e5d275r1-723-691v2_uhq.jpg"
+		)
+		embed.add_field(
+			name="`!subscribe <twitch_channel_name>`",
+			value="Subscribe to notifications for a new streamer.",
+			inline=False
+		)
+		embed.add_field(
+			name="`!unsubscribe <twitch_channel_name>`",
+			value="Unsubscribe from notifications for a streamer.",
+			inline=False
+		)
+		embed.add_field(
+			name="`!subscriptions`",
+			value="Show all your active subscriptions.",
+			inline=False
+		)
+		await recipient.send(embed=embed)
+		logging.info(f"Sent help to {recipient.name}.")
+		return
 
 	async def sub_unsub_wrapper(self, func, name: str, subscriber: discord.User):
 		try:
