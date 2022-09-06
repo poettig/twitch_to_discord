@@ -57,12 +57,12 @@ class DiscordClient:
 			asyncio.ensure_future(self.twitch_watcher())
 
 		@self.client.event
-		async def _on_message(message):
-			await self.on_message(message)
+		async def on_message(message):
+			await self.on_discord_message(message)
 
 		self.client.run(discord_bot_token, log_handler=None)
 
-	async def on_message(self, message):
+	async def on_discord_message(self, message):
 		# ignore own messages
 		if message.author == self.client.user:
 			return
