@@ -273,7 +273,7 @@ class DiscordClient:
 				logging.debug(f"Sent notification '{notification_title_prefix}' for {streamer_display_name} to {user.name}")
 
 		logging.info(
-			f"Sent notification '{notification_title_prefix}' {streamer_display_name}"
+			f"Sent notification '{notification_title_prefix}' for {streamer_display_name}"
 			f" to {self.subscription_manager.get_subscriber_count()}"
 			f" {inflect.engine().plural('subscriber', self.subscription_manager.get_subscriber_count())}"
 		)
