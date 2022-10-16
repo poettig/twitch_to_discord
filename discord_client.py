@@ -54,7 +54,7 @@ class DiscordClient:
 		@self.client.event
 		async def on_ready():
 			logging.info(f"bot is now logged in as {self.client.user}")
-			asyncio.ensure_future(self.twitch_watcher())
+			asyncio.ensure_future(self.watcher())
 
 		@self.client.event
 		async def on_message(message):
@@ -184,11 +184,13 @@ class DiscordClient:
 
 		return response
 
-	async def twitch_watcher(self):
+	async def watcher(self):
 		titles = dict()
 		nightbot_subscribed_commands_messages = collections.defaultdict(dict)
 
 		while True:
+			logging.debug("Checking twitch for updates...")
+
 			# Collect set of all subscribed streamers
 			subscribed_streamer_ids = set()
 			for subscriber in self.subscription_manager.subscribers.values():
@@ -223,6 +225,8 @@ class DiscordClient:
 					streamer_id, "Title update", new_title,
 					"https://pbs.twimg.com/profile_images/1450901581876973568/0bHBmqXe_400x400.png"
 				)
+
+			logging.debug("Checking nightbot for updates...")
 
 			# Check subscribed nightbot commands for changes
 			for streamer_id in subscribed_streamer_ids:
