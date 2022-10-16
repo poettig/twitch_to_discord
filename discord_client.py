@@ -204,15 +204,18 @@ class DiscordClient:
 			for streamer_id, new_title in new_titles.items():
 				# Ignore if there was no previously remembered title
 				if titles.get(streamer_id) is None:
+					logging.debug(f"No tracked title available for {self.twitch_client.get_display_name(streamer_id)}.")
 					continue
 
 				# Ignore if the title did not change
 				if new_title == titles.get(streamer_id):
+					logging.debug(f"Title did not change for {self.twitch_client.get_display_name(streamer_id)}.")
 					continue
 
 				# TODO: Make configurable
 				# Ignore if the streamer is live
 				if self.twitch_client.is_live(streamer_id):
+					logging.info(f"{self.twitch_client.get_display_name(streamer_id)} is already live, not sending update.")
 					continue
 
 				# Notify all subscribers of that streamer
